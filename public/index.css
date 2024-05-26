@@ -1,0 +1,190 @@
+/* Top Section */
+.top-section {
+    display: flex;
+    justify-content: space-between;
+}
+
+.selected-node-controller {
+    
+    width: 30%;
+}
+
+.selected-node-controller .transformation-controller {
+    display: flex;
+    width: 30%;
+}
+
+#translation {
+    width: 100%;
+    margin-right: 10%;
+}
+#rotation {
+    width: 100%;
+    margin-right: 10%;
+}
+
+/* canvas */
+
+canvas {
+    height: 70vh; 
+    width: 99%; 
+    z-index: 0;
+    margin-right: 1%;
+    border: 3px solid black;
+    border-radius: 5px;
+}
+
+/*Controller*/
+.controller {
+    display: flex;
+}
+
+/* Transformation Controller*/
+
+.transformation-controller{
+    width: 35%;
+}
+
+select {
+    height: 5vh; 
+    width: 20vh;
+    margin-top:5px; 
+    font-size:x-large;
+}
+
+.transformation-controller button{
+    height: 5vh; 
+    width: 15vh;
+    margin-top:5px; 
+    font-size:larger;
+}
+
+
+.animation-controller{
+    width: 30%;
+}
+
+.animation-editor{
+    width: 30%;
+}
+
+#animation span{
+    font-size: larger;
+}
+.transformation-controller span{
+    font-size: larger;
+}
+
+#setting select {
+    height: 5vh; 
+    width: 20vh;
+    margin-top:5px; 
+    font-size:x-large;
+}
+
+#texture-btn{
+    width: 30vh;
+}
+
+/* Light Editor */
+.light-editor-container {
+    display: flex;
+}
+
+.light-editor {
+    margin-right: 3%;
+}
+
+.light-editor label{
+    font-size: larger;
+    font-weight: bold;
+}
+
+/*Animation Controller*/
+#animation {
+    margin-top: 10%;
+}
+.animation-controller button {
+    height: 5vh; 
+    width: 15vh;
+    margin-top:5px; 
+    font-size:larger;
+}
+
+#animation p{
+    font-size: larger;
+}
+
+/*Animation Editor*/
+.frame {
+    margin-bottom: 5vh;
+}
+
+
+.frame-header{
+    display: flex;
+    align-items: center;
+}
+
+.frame-header button{
+    margin-right: 1vh;
+}
+.frame-header h2 {
+    margin-right: 2vh;
+}
+
+.frame-name{
+    font-size: large;
+    margin-right: 1vh;
+}
+
+.frame-name:hover{
+    cursor: pointer;
+}
+
+.add-btn {
+    background-color: aqua;
+    border-color: aqua;
+}
+
+.delete-btn{
+    color: white;
+    background-color: red;
+    border-color: red;
+}
+
+.frame-editor {
+    display: flex;
+    gap : 3%;
+}
+
+.frame-container {
+    overflow: auto; /* Add the ability to scroll */ 
+    height: 500px; 
+  }
+
+.swap-btn{
+    width: 9vw;
+}
+
+#component-tree {
+    border: 3px solid black;
+    border-radius: 5px;
+    padding: 1%;
+    height: 40vh;
+    width: 30vh;
+    overflow: auto;
+    margin-right: 3vh;
+    overflow: auto;
+    height: 200px;
+    margin-bottom: 1%;
+  }
+
+.guide-btn {
+    width: 20vh;
+    height: 5vh;
+}
+
+.guide-div {
+    margin-top: 10vh;
+}

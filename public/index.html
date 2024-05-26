@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real Engine</title>
+    <script type="x-shader/x-vertex" id="vertex-shader">
+        attribute vec4 a_position;
+        attribute vec4 a_color;
+        attribute vec3 a_normal;
+        attribute vec2 a_texcoord;
+        attribute vec3 a_tangent;
+        attribute vec3 a_bitangent;
+
+        uniform mat4 u_normalMatrix;
+        uniform mat4 u_viewProjection;
+        uniform mat4 u_inverseTranspose;
+        uniform float u_shininess;
+
+        varying float v_shininess;
+        varying vec4 v_color;
+        varying vec3 v_normal;
+        varying vec3 v_position;
+        varying vec2 v_texcoord;
+
+        varying vec3 ts_light_pos;
+        varying vec3 ts_view_pos;
+        varying vec3 ts_frag_pos;
+
+        mat3 transpose(in mat3 inMatrix)
+        {
+            vec3 i0 = inMatrix[0];
+            vec3 i1 = inMatrix[1];
+            vec3 i2 = inMatrix[2];
+
+            mat3 outMatrix = mat3(
+                vec3(i0.x, i1.x, i2.x),
+                vec3(i0.y, i1.y, i2.y),
+                vec3(i0.z, i1.z, i2.z)
+            );
+
+            return outMatrix;
+        }
+
+        void main() {
+            gl_Position = u_viewProjection * a_position;
+
+            v_color = a_color;
+
+            v_normal = (u_inverseTranspose * vec4(a_normal, 0)).xyz;
+
+            v_texcoord = a_texcoord;
+
+            v_shininess = u_shininess;
+
+            v_position = (u_viewProjection * a_position).xyz;
+
+            ts_frag_pos = vec3(u_viewProjection * a_position);
+
+            vec3 t = normalize(mat3(u_inverseTranspose) * a_tangent);
+            vec3 b = normalize(mat3(u_inverseTranspose) * a_bitangent);
+            vec3 n = normalize(mat3(u_inverseTranspose) * a_normal);
+            mat3 tbn = transpose(mat3(t, b, n));
+
+            vec3 light_pos = vec3(1, 2, 0);
+            ts_light_pos = tbn * light_pos;
+            ts_view_pos = tbn * vec3(0, 0, 0);
+            ts_frag_pos = tbn * ts_frag_pos;
+        }
+    </script>
+    <script type="x-shader/x-fragment" id="fragment-shader">
+        precision mediump float;
+
+        varying vec4 v_color;
+        varying vec3 v_normal;
+        varying vec3 v_position;
+        varying vec2 v_texcoord;
+
+        uniform vec3 u_ambientLight;
+        uniform vec3 u_diffuseLight;
+        uniform vec3 u_specularLight;
+        uniform vec3 u_reverseLight;
+
+        uniform bool u_shading;
+
+        // Light model 
+        uniform vec3 u_lightPosition;
+        varying float v_shininess;
+
+        // Camera model
+        vec3 u_cameraPosition = vec3(0,0,1);
+
+        uniform int u_texture_mode;
+        uniform sampler2D u_texture;
+        uniform samplerCube u_texture_env;
+
+        varying vec3 ts_light_pos;
+        varying vec3 ts_view_pos;
+        varying vec3 ts_frag_pos;
+
+        void main() {
+            vec3 toLightSource;
+            float diffuseCosAngle;
+            float specularCosAngle;
+            vec3 reflection;
+            vec3 toCamera;
+            vec3 specularColor;
+            vec3 ambientDiffuseColor;
+
+            gl_FragColor = v_color;
+
+            if (u_texture_mode == 0) {
+                highp vec4 texelColor = texture2D(u_texture, v_texcoord);
+                gl_FragColor = texelColor;
+                if (u_shading) {
+                    vec3 normal = normalize(v_normal);
+                    float directional_light = max(dot(normal, u_reverseLight), 0.0);
+                    gl_FragColor.rgb *= (u_ambientLight + directional_light);
+                }
+            } else if (u_texture_mode == 1) {
+                vec3 normal = normalize(v_normal);
+                vec3 direction = reflect(normalize(v_position), normal);
+        
+                gl_FragColor = textureCube(u_texture_env, direction);
+            } else if (u_texture_mode == 2){
+                vec3 light_dir = normalize(ts_light_pos - ts_frag_pos);
+                vec3 view_dir = normalize(ts_view_pos - ts_frag_pos);
+                vec3 albedo = texture2D(u_texture, v_texcoord).rgb;
+                vec3 ambient = 0.3 * albedo;
+                vec3 norm = normalize(texture2D(u_texture, v_texcoord).rgb * 2.0 - 1.0);
+                float diffuse = max(dot(light_dir, norm), 0.0);
+                highp vec4 texelColor = vec4(diffuse * albedo + ambient, 1.0);
+                gl_FragColor = texelColor;
+
+                if (u_shading) {
+                    vec3 normal = normalize(v_normal);
+                    float directional_light = max(dot(normal, u_reverseLight), 0.0);
+                    gl_FragColor.rgb *= (u_ambientLight + directional_light);
+                }
+            } else {
+                if (u_shading) {
+                    vec3 ambientFragColor; 
+                    vec3 diffuseFragColor; 
+
+                    vec3 normal = normalize(v_normal);  
+                    float directional_light = max(dot(normal, u_reverseLight), 0.0);
+                    
+                    // calculate a vector from fragment location to the light source
+                    toLightSource = normalize(u_lightPosition - v_position);
+                    
+                    // Calculate a vector from fragment location to the camera
+                    toCamera = u_cameraPosition - v_position;
+    
+                    // Calculate the reflection vector
+                    reflection = normalize(2.0 * dot(normal, toLightSource) * normal - toLightSource);
+    
+                    // Normalize toCamera
+                    toCamera = normalize(toCamera);
+    
+                    // Calculate the cosine of the angle between the reflection vector
+                    // and the vector going to the camera.
+                    specularCosAngle = dot(reflection, toCamera);
+                    specularCosAngle = clamp(specularCosAngle, 0.0, 1.0);
+                    specularCosAngle = pow(specularCosAngle, v_shininess);
+    
+                    // Calculate the cosine of the angle between the vertex's normal vector
+                    // and the vector going to the light.
+                    diffuseCosAngle = dot(normal, toLightSource);
+                    diffuseCosAngle = clamp(diffuseCosAngle, 0.0, 1.0);
+                    
+                    ambientFragColor = vec3(v_color) * (u_ambientLight + directional_light);
+                    diffuseFragColor = (vec3(v_color)* diffuseCosAngle) * (u_diffuseLight + directional_light) ;
+                    
+                    // Calculate specular coloring
+                    specularColor = u_specularLight * specularCosAngle;
+                    ambientDiffuseColor = (0.5*ambientFragColor+0.5*diffuseFragColor) * (1.0 - specularCosAngle);
+    
+                    gl_FragColor.rgb = specularColor + ambientDiffuseColor;
+                }
+            }
+
+            
+        }
+    </script>
+    <link rel="stylesheet" href="index.css">
+</head>
+
+<body>
+    <div class="top-section">
+        <div id="canvasArea">
+            <canvas id="canvas"></canvas>
+        </div>
+
+        <div class="selected-node-controller">
+            <div id="scene-graph">
+                <h2>Component Tree</h2>
+                <div id="component-tree"></div>
+            </div>
+
+            <button id="back-to-root"> Back to Root</button>
+            <h2>Selected Node: <span id="selected-node"> - </span></h2>
+            <h2>Exported Node: <span id="exported-node"> - </span></h2>
+            <button id="add-node"> Add Node</button>
+            <button id="remove-node"> Remove Node</button>
+            <button id="export-node"> Export Node</button>
+            <button id="import-node"> Import Node</button>
+
+
+            <div class="transformation-controller">
+                <div id="translation">
+                    <h4>Node Translation</h1>
+                        <input id="slider-translate-node-x" type="range" min="-100" max="100" step="1" value="0" />
+                        <label id="label-translate-node-x" for="slider-translate-x">0</label>
+                        <input id="slider-translate-node-y" type="range" min="-100" max="100" step="1" value="0" />
+                        <label id="label-translate-node-y" for="slider-translate-y">0</label>
+                        <input id="slider-translate-node-z" type="range" min="-100" max="100" step="1" value="0" />
+                        <label id="label-translate-node-z" for="slider-translate-z">0</label>
+                </div>
+                <div id="rotation">
+                    <h4>Node Rotation</h1>
+                        <input id="slider-rotate-node-x" type="range" min="0" max="360" step="1" value="0" />
+                        <label id="label-rotate-node-x" for="slider-rotate-x">0</label>
+                        <input id="slider-rotate-node-y" type="range" min="0" max="360" step="1" value="0" />
+                        <label id="label-rotate-node-y" for="slider-rotate-y">0</label>
+                        <input id="slider-rotate-node-z" type="range" min="0" max="360" step="1" value="0" />
+                        <label id="label-rotate-node-z" for="slider-rotate-z">0</label>
+                </div>
+                <div id="scaling">
+                    <h4>Node Scaling</h1>
+                        <input id="slider-scale-node-x" type="range" min="1" max="10" step="0.1" value="1" />
+                        <label id="label-scale-node-x" for="slider-scale-x">0</label>
+                        <input id="slider-scale-node-y" type="range" min="1" max="10" step="0.1" value="1" />
+                        <label id="label-scale-node-y" for="slider-scale-y">0</label>
+                        <input id="slider-scale-node-z" type="range" min="1" max="10" step="0.1" value="1" />
+                        <label id="label-scale-node-z" for="slider-scale-z">0</label>
+                </div>
+
+            </div>
+        </div>
+    </div>
+    <div class="controller">
+        <div class="transformation-controller">
+            <h2>Transformation</h2>
+            <div id="translation">
+                <h3>Translation</h1>
+                    <input id="slider-translate-x" type="range" min="-100" max="100" step="1" value="0" />
+                    <label id="label-translate-x" for="slider-translate-x">0</label>
+                    <input id="slider-translate-y" type="range" min="-100" max="100" step="1" value="0" />
+                    <label id="label-translate-y" for="slider-translate-y">0</label>
+                    <input id="slider-translate-z" type="range" min="-100" max="100" step="1" value="0" />
+                    <label id="label-translate-z" for="slider-translate-z">0</label>
+            </div>
+            <div id="rotation">
+                <h3>Rotation</h1>
+                    <input id="slider-rotate-x" type="range" min="0" max="360" step="1" value="0" />
+                    <label id="label-rotate-x" for="slider-rotate-x">0</label>
+                    <input id="slider-rotate-y" type="range" min="0" max="360" step="1" value="0" />
+                    <label id="label-rotate-y" for="slider-rotate-y">0</label>
+                    <input id="slider-rotate-z" type="range" min="0" max="360" step="1" value="0" />
+                    <label id="label-rotate-z" for="slider-rotate-z">0</label>
+            </div>
+            <div id="scaling">
+                <h3>Scaling</h1>
+                    <input id="slider-scale-x" type="range" min="1" max="10" step="0.1" value="1" />
+                    <label id="label-scale-x" for="slider-scale-x">0</label>
+                    <input id="slider-scale-y" type="range" min="1" max="10" step="0.1" value="1" />
+                    <label id="label-scale-y" for="slider-scale-y">0</label>
+                    <input id="slider-scale-z" type="range" min="1" max="10" step="0.1" value="1" />
+                    <label id="label-scale-z" for="slider-scale-z">0</label>
+            </div>
+            <div id="camera">
+                <h3>Camera Movement</h1>
+                    <input id="slider-camera-angle" type="range" min="0" max="360" step="1" value="0" />
+                    <label id="label-camera-angle" for="slider-camera-angle">0</label>
+                    <input id="slider-camera-radius" type="range" min="1" max="1000" step="1" value="0" />
+                    <label id="label-camera-radius" for="slider-camera-radius">0</label>
+            </div>
+
+            <select id="projection-type" class="btn">
+                <option value="Orthographic" selected="selected">Orthographic</option>
+                <option value="Perspective">Perspective</option>
+                <option value="Oblique">Oblique</option>
+            </select>
+
+            <h2>Material</h2>
+            <div id="setting">
+                <select id="mapping-mode" class="btn">
+                    <option value="none" selected="selected">None</option>
+                    <option value="texture">Texture</option>
+                    <option value="environment">Environment</option>
+                    <option value="bump">Bump</option>
+                </select>
+                <select id="texture-opt" class="btn">
+                    <option value="WOOD" selected="selected">
+                        Wood
+                    </option>
+                    <option value="BRICK">Brick</option>
+                    <option value="TILES">Tiles</option>
+                    <option value="BUMP">Bump</option>
+                </select>
+            </div>
+
+            <h2>IO</h2>
+            <div>
+                <button id="save-btn">SAVE</button>
+                <button id="reset-btn"> RESET </button>
+                <button id="texture-btn"> RENDER TEXTURE </button>
+            </div>
+
+            <span>Model: </span>
+            <select id="model-opt" class="btn">
+                <option value="jam">Jam</option>
+                <option value="pyramid">Pyramid</option>
+                <option value="sheep">Sheep</option>
+                <option value="octagon">Octagon</option>
+                <option value="ironGol" selected="selected">Iron Golem</option>
+                <option value="tube">Tube</option>
+                <option value="esTrico">Ice Trico</option>
+                <option value="trapezoid">Trapezoid</option>
+            </select>
+
+
+        </div>
+
+        <div class="animation-controller">
+            <h2>Light - Material</h2>
+            <div>
+                <h3>Shininess</h3>
+                <input id="slider-shininess" type="range" min="1" max="10" step="0.01" value="5" />
+                <label id="label-shininess" for="slider-shininess">5</label>
+            </div>
+            <div class="light-editor-container">
+                <div class="light-editor">
+                    <div>
+                        <label for="ambient-color-picker">Ambient: </label>
+                        <input type="color" id="ambient-color-picker" name="ambientColorPicker" value="#FFFFFF" />
+                    </div>
+                </div>
+                <div class="light-editor">
+                    <div>
+                        <label for="diffuse-color-picker">Diffuse: </label>
+                        <input type="color" id="diffuse-color-picker" name="diffuseColorPicker" value="#FFFFFF" />
+                    </div>
+                </div>
+                <div class="light-editor">
+                    <div>
+                        <label for="specular-color-picker">Specular: </label>
+                        <input type="color" id="specular-color-picker" name="specularColorPicker" value="#FFFFFF" />
+                    </div>
+                </div>
+
+            </div>
+
+
+            <div id="animation">
+                <h2> Animation</h2>
+                <div id="frame-rate">
+                    <h3>FPS</h3>
+                    <input id="slider-frame-rate" type="range" min="0.5" max="90" step="0.5" value="30" />
+                    <label id="label-frame-rate" for="slider-frame-rate">30</label>
+                </div>
+                <p><span>Current Frame:</span> <span id="current-frame"></span></p>
+                <p><span>Total Frame:</span> <span id="total-frame"></span></p>
+
+                <div class="animation-control-btn">
+                    <button id="animation-play"> PLAY </button>
+                    <button id="animation-reverse"> REVERSE </button>
+                    <button id="animation-autoreplay"> AUTO </button>
+                </div>
+
+                <div class="frame-control-btn">
+                    <button id="frame-first"> FIRST </button>
+                    <button id="frame-previous"> PREVIOUS </button>
+                    <button id="frame-next"> NEXT </button>
+                    <button id="frame-last"> LAST </button>
+                </div>
+
+                <span>Transition: </span>
+                <select id="tweening-opt" class="btn">
+                    <option value="linear" selected="selected">
+                        Linear
+                    </option>
+                    <option value="ease-in-quartic">Ease In Quartic</option>
+                    <option value="ease-in-elastic">Ease In Elastic</option>
+                    <option value="ease-in-out-cubic">Ease In Out Cubic</option>
+                    <option value="ease-in-out-quintic">Ease In Out Quintic</option>
+                    <option value="ease-out-elastic">Ease Out Elastic</option>
+                    <option value="ease-out-bounce">Ease Out Bounce</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="animation-editor">
+            <div id="animation-editor-header">
+                <h2>Animation Clip</h2>
+                <button id="animation-addfirst-btn" class="add-btn">+</button>
+            </div>
+            <div class="frame-container"></div>
+        </div>
+
+    </div>
+    <div class="guide-div">
+        <button class="guide-btn" onclick="window.open('https://youtu.be/a5wYpqwehBM', '_blank')" >Guide Video</button>
+    </div>
+
+
+
+    <script type="text/javascript" src="index.js"></script>
+</body>
+
+</html>
